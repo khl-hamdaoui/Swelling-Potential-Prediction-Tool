@@ -1,4 +1,3 @@
-
 import streamlit as st
 import joblib
 import numpy as np
@@ -211,21 +210,39 @@ st.markdown(
         border-radius: 15px;
         margin-bottom: 2rem;
         box-shadow: 0 2px 8px rgba(0,0,0,0.07);
-        justify-content: center; /* Center tabs */
+        justify-content: flex-start; /* Align tabs to the start (left) */
         display: flex;
+        flex-wrap: nowrap; /* Prevent tabs from wrapping to next line */
+        overflow-x: auto; /* Enable horizontal scrolling if tabs overflow */
+        -webkit-overflow-scrolling: touch; /* Smooth scrolling on iOS */
+        gap: 0.5rem; /* Space between tabs */
     }
 
     .stTabs [data-baseweb="tab"] {
+        flex-shrink: 0; /* Prevent tabs from shrinking */
         border-radius: 10px;
         padding: 0.75rem 1.2rem;
         font-weight: 500;
         transition: all 0.3s ease;
         font-size: 1.2rem; /* Bigger tab names */
+        white-space: nowrap; /* Prevent text from wrapping inside tab */
+        color: var(--secondary-color); /* Default tab text color */
+        background: transparent; /* Default tab background */
+        border: 1px solid var(--border-color); /* Subtle border for unselected tabs */
     }
     
+    .stTabs [data-baseweb="tab"]:hover {
+        background: rgba(52, 152, 219, 0.1); /* Light hover background */
+        color: var(--accent-color); /* Hover text color */
+        border-color: var(--accent-color);
+    }
+
     .stTabs [aria-selected="true"] {
         background: linear-gradient(135deg, var(--accent-color), #2980B9);
         color: white;
+        border-color: var(--accent-color); /* Active tab border color */
+        box-shadow: var(--shadow-hover); /* Add shadow to active tab */
+        transform: translateY(-1px); /* Slight lift for active tab */
     }
     
     .stDataFrame {
@@ -1350,6 +1367,6 @@ st.markdown("---")
 st.markdown("""
 <div style="text-align: center; padding: 2rem; color: #7F8C8D;">
     <p>🏛️ Developed at Hassiba Benbouali University | 🔬 Geomaterials Laboratory</p>
-    <p>📧 Contact: k.hamdaoui92@univ-chlef.dz | 🌟 Version 2.4 - Default Sample 28 for Manual Input</p>
+    <p>📧 Contact: k.hamdaoui92@univ-chlef.dz </p>
 </div>
 """, unsafe_allow_html=True)
