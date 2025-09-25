@@ -20,7 +20,7 @@ st.set_page_config(
 )
 st.title("⚙️ Soil Swelling Potential Prediction Tool")
 
-# Enhanced CSS for Chrome optimization, modern UI, and fixed tabs
+# Enhanced CSS for Chrome optimization, modern UI, fixed tabs, centered tabs, and bigger tab names
 st.markdown(
     """
     <style>
@@ -210,6 +210,8 @@ st.markdown(
         border-radius: 15px;
         margin-bottom: 2rem;
         box-shadow: 0 2px 8px rgba(0,0,0,0.07);
+        justify-content: center; /* Center tabs */
+        display: flex;
     }
 
     .stTabs [data-baseweb="tab"] {
@@ -217,6 +219,7 @@ st.markdown(
         padding: 0.75rem 1.2rem;
         font-weight: 500;
         transition: all 0.3s ease;
+        font-size: 1.2rem; /* Bigger tab names */
     }
     
     .stTabs [aria-selected="true"] {
@@ -369,6 +372,7 @@ st.markdown(
 # -----------------------------
 @st.cache_resource
 def load_models_and_preprocessors():
+    """Load models, scalers, imputers, and explainers for efficient prediction."""
     try:
         scaler_noimp = joblib.load("models/scaler.pkl")
         median_imputer = joblib.load("models/median_imputer.pkl")
@@ -422,13 +426,28 @@ with st.spinner('Loading models and preprocessors...'):
     assets = load_models_and_preprocessors()
 
 # -----------------------------
+# Cache Dataset Loading
+# -----------------------------
+@st.cache_data
+def load_default_data(file_path):
+    """Load the default dataset with caching for faster access."""
+    try:
+        return pd.read_excel(file_path)
+    except FileNotFoundError:
+        return None
+
+default_data = load_default_data("data-with-output.xlsx")
+
+# -----------------------------
 # Helper Functions
 # -----------------------------
 def compute_A30(y_true, y_pred):
+    """Compute A30-index: proportion of predictions within ±30% of observed values."""
     evaluator = RegressionMetric(y_true.tolist(), y_pred.tolist())
     return evaluator.A30()
 
 def plot_real_vs_pred(y_true, y_pred, model_name):
+    """Generate a scatter plot of true vs. predicted values with color-coded ranges."""
     swelling_potential_categories = {
         "Low (0-15)": "#34A853",
         "Medium (15-25)": "#F9AB00",
@@ -503,6 +522,7 @@ def plot_real_vs_pred(y_true, y_pred, model_name):
     return fig
 
 def to_excel(df):
+    """Convert DataFrame to Excel file in memory for download."""
     output = BytesIO()
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
         df.to_excel(writer, index=False, sheet_name='Predictions')
@@ -517,16 +537,16 @@ def to_excel(df):
 # -----------------------------
 # Sidebar: Enhanced Model Selection
 # -----------------------------
-st.sidebar.markdown("## 🤖 Model Configuration")
+st.sidebar.markdown("##  Model Configuration")
 
 st.sidebar.markdown("### Select Prediction Model")
 model_name = st.sidebar.radio(
     "Choose Model",
     ["XGBoost", "LightGBM", "CatBoost"],
     format_func=lambda x: {
-        "XGBoost": "🚀 XGBoost",
-        "LightGBM": "⚡ LightGBM",
-        "CatBoost": "🎯 CatBoost"
+        "XGBoost": " XGBoost",
+        "LightGBM": " LightGBM",
+        "CatBoost": " CatBoost"
     }[x],
     horizontal=True,
     label_visibility="collapsed"
@@ -537,22 +557,15 @@ scenario = st.sidebar.radio(
     "Imputation Strategy",
     ["Without Imputation", "Median Imputation", "KNN Imputation"],
     format_func=lambda x: {
-        "Without Imputation": "🔵 Native",
-        "Median Imputation": "🟢 Median",
-        "KNN Imputation": "🟣 KNN"
+        "Without Imputation": " Native",
+        "Median Imputation": " Median",
+        "KNN Imputation": " KNN"
     }[x],
     horizontal=True,
     label_visibility="collapsed"
 )
 
-st.sidebar.markdown("---")
-st.sidebar.markdown("### 📊 Current Configuration")
-st.sidebar.markdown(f"""
-<div style='background: rgba(255,255,255,0.1); padding: 1rem; border-radius: 10px;'>
-    <p><strong>Model:</strong> {model_name}</p>
-    <p><strong>Imputation:</strong> {scenario}</p>
-</div>
-""", unsafe_allow_html=True)
+
 
 scenario_map = {
     "Without Imputation": "no_imp",
@@ -584,10 +597,10 @@ feature_names = list(inputs_info.keys())
 # Main Panel with Enhanced Tabs
 # -----------------------------
 tab_single_pred, tab_batch_existing, tab_batch_unseen, tab_about = st.tabs([
-    "🔮 Single Prediction",
-    "📊 Batch (Existing)",
-    "📈 Batch (Unseen)",
-    "ℹ️ About"
+    "🧪 Individual Sample Prediction",
+    "📈 Batch Prediction with Known Outputs", 
+    "🔬 Batch Prediction for Unknown Outputs",
+    "📚 Tool Information"
 ])
 
 # --- Enhanced Single Prediction Tab ---
@@ -603,40 +616,66 @@ with tab_single_pred:
     </div>
     """, unsafe_allow_html=True)
     
-    # Initialize session state for sample selection
+    # Initialize session state for input mode and sample selection
+    if 'input_mode' not in st.session_state:
+        st.session_state.input_mode = "Manual Input"
     if 'selected_sample_index' not in st.session_state:
         st.session_state.selected_sample_index = None
     if 'sample_values' not in st.session_state:
-        st.session_state.sample_values = {key: round(float(np.mean(inputs_info[key]["range"])), 2) for key in feature_names}
-        st.session_state.missing_values = {key: False for key in feature_names}
+        # Default to Sample 28 if dataset exists, else use mean of ranges
+        if default_data is not None and len(default_data) >= 28:
+            sample = default_data.loc[27, feature_names]  # Sample 28 (index 27)
+            st.session_state.sample_values = {key: sample[key] if not pd.isna(sample[key]) else np.nan for key in feature_names}
+        else:
+            st.session_state.sample_values = {key: round(float(np.mean(inputs_info[key]["range"])), 2) for key in feature_names}
+    if 'missing_values' not in st.session_state:
+        if default_data is not None and len(default_data) >= 28:
+            sample = default_data.loc[27, feature_names]
+            st.session_state.missing_values = {key: pd.isna(sample[key]) for key in feature_names}
+        else:
+            st.session_state.missing_values = {key: False for key in feature_names}
 
-    # Load dataset for sample selection
-    try:
-        default_data = pd.read_excel("data-with-output.xlsx")
-        # Create display labels with row number (1-based index for user)
-        sample_labels = [f"Sample {i+1}" for i in range(len(default_data))]
-        st.markdown("## 🧪 Test with Sample from Dataset")
-        selected_sample_label = st.selectbox(
-            "Select a sample from the dataset",
-            ["Manual Input"] + sample_labels,
-            key="sample_select"
+    # Load dataset if available
+    if default_data is None:
+        st.warning("Default dataset 'data-with-output.xlsx' not found. Only manual input is available.")
+        st.session_state.input_mode = "Manual Input"
+    else:
+        num_samples = len(default_data)
+        st.markdown("## ⚡ Input Mode Selection")
+        st.session_state.input_mode = st.radio(
+            "Choose input method",
+            ["Manual Input", "Load from Dataset"],
+            horizontal=True
         )
         
-        if selected_sample_label != "Manual Input":
-            selected_index = sample_labels.index(selected_sample_label)
-            st.session_state.selected_sample_index = selected_index
-            sample = default_data.loc[selected_index, feature_names]
-            st.session_state.sample_values = {key: sample[key] if not pd.isna(sample[key]) else np.nan for key in feature_names}
-            st.session_state.missing_values = {key: pd.isna(sample[key]) for key in feature_names}
-            st.success(f"Loaded values for {selected_sample_label}")
+        if st.session_state.input_mode == "Load from Dataset":
+            user_index = st.number_input(
+                "Enter sample number (1 to {})".format(num_samples),
+                min_value=1,
+                max_value=num_samples,
+                step=1,
+                value=1 if st.session_state.selected_sample_index is None else st.session_state.selected_sample_index + 1
+            )
+            selected_index = user_index - 1  # Convert to 0-based index
+            if 0 <= selected_index < num_samples:
+                st.session_state.selected_sample_index = selected_index
+                sample = default_data.loc[selected_index, feature_names]
+                st.session_state.sample_values = {key: sample[key] if not pd.isna(sample[key]) else np.nan for key in feature_names}
+                st.session_state.missing_values = {key: pd.isna(sample[key]) for key in feature_names}
+                st.success(f"Loaded values for Sample {user_index}")
+            else:
+                st.error(f"Invalid sample number. Please enter a number between 1 and {num_samples}.")
         else:
             st.session_state.selected_sample_index = None
-            st.session_state.sample_values = {key: round(float(np.mean(inputs_info[key]["range"])), 2) for key in feature_names}
-            st.session_state.missing_values = {key: False for key in feature_names}
-            
-    except FileNotFoundError:
-        st.warning("Default dataset 'data-with-output.xlsx' not found. Manual input required.")
-        default_data = None
+            # Set default to Sample 28 for Manual Input
+            if default_data is not None and len(default_data) >= 28:
+                sample = default_data.loc[27, feature_names]  # Sample 28 (index 27)
+                st.session_state.sample_values = {key: sample[key] if not pd.isna(sample[key]) else np.nan for key in feature_names}
+                st.session_state.missing_values = {key: pd.isna(sample[key]) for key in feature_names}
+            else:
+                st.session_state.sample_values = {key: round(float(np.mean(inputs_info[key]["range"])), 2) for key in feature_names}
+                st.session_state.missing_values = {key: False for key in feature_names}
+                st.warning("Dataset not found. Default values set to mean of feature ranges.")
 
     st.markdown("## 📝 Soil Property Inputs")
     
@@ -654,7 +693,7 @@ with tab_single_pred:
                     is_missing = st.checkbox(
                         f"Missing: {info['description']}",
                         value=st.session_state.missing_values[key],
-                        key=f"missing_{key}"
+                        key=f"missing_{key}_{st.session_state.get('input_key_suffix', '')}"
                     )
                     if is_missing:
                         inputs[key] = np.nan
@@ -670,7 +709,7 @@ with tab_single_pred:
                             value=default_value,
                             step=0.1,
                             format="%.2f",
-                            key=f"input_{key}",
+                            key=f"input_{key}_{st.session_state.get('input_key_suffix', '')}",
                             help=f"Range: {info['range'][0]} - {info['range'][1]} {info['unit']}"
                         )
         
@@ -683,7 +722,7 @@ with tab_single_pred:
                     is_missing = st.checkbox(
                         f"Missing: {info['description']}",
                         value=st.session_state.missing_values[key],
-                        key=f"missing_{key}"
+                        key=f"missing_{key}_{st.session_state.get('input_key_suffix', '')}"
                     )
                     if is_missing:
                         inputs[key] = np.nan
@@ -699,7 +738,7 @@ with tab_single_pred:
                             value=default_value,
                             step=0.1,
                             format="%.2f",
-                            key=f"input_{key}",
+                            key=f"input_{key}_{st.session_state.get('input_key_suffix', '')}",
                             help=f"Range: {info['range'][0]} - {info['range'][1]} {info['unit']}"
                         )
         
@@ -712,7 +751,7 @@ with tab_single_pred:
                     is_missing = st.checkbox(
                         f"Missing: {info['description']}",
                         value=st.session_state.missing_values[key],
-                        key=f"missing_{key}"
+                        key=f"missing_{key}_{st.session_state.get('input_key_suffix', '')}"
                     )
                     if is_missing:
                         inputs[key] = np.nan
@@ -728,11 +767,12 @@ with tab_single_pred:
                             value=default_value,
                             step=0.1,
                             format="%.2f",
-                            key=f"input_{key}",
+                            key=f"input_{key}_{st.session_state.get('input_key_suffix', '')}",
                             help=f"Range: {info['range'][0]} - {info['range'][1]} {info['unit']}"
                         )
 
     def get_swelling_category(value):
+        """Determine swelling category based on predicted value."""
         if value >= 35:
             return "Very High", "#6A0DAD", "Extreme swelling potential - Special design considerations required"
         elif value >= 25:
@@ -742,18 +782,16 @@ with tab_single_pred:
         else:
             return "Low", "#34A853", "Low swelling potential - Minimal structural impact"
 
-    if st.button("🔍 **Generate Prediction & Analysis**", type="primary", use_container_width=True):
+    if st.button("🔍 **Generate a prediction and display its SHAP waterfall plot**", type="primary", use_container_width=True):
         missing_count = sum(1 for value in inputs.values() if pd.isna(value))
         
         if missing_count >= 3:
             st.error("❌ **Prediction Error:** The model cannot provide a reliable estimate with 3 or more missing features. Please provide more data.")
         else:
             with st.spinner("Processing soil data and generating predictions..."):
-                # Ensure input order matches feature_names
                 input_df = pd.DataFrame([inputs])[feature_names]
                 input_df_unscaled = input_df.copy()
                 
-                # Processing logic identical to batch
                 if scenario_key == "no_imp":
                     X_processed = assets["scalers"]["no_imp"].transform(input_df)
                 elif scenario_key == "median":
@@ -768,9 +806,10 @@ with tab_single_pred:
                 model = assets["models"][scenario_key][model_name]
                 prediction = model.predict(X_processed)[0]
                 
-                # Debug: Compare with batch prediction for the same sample
-                if st.session_state.selected_sample_index is not None and default_data is not None:
-                    batch_df = default_data[feature_names].iloc[[st.session_state.selected_sample_index]]
+                # Debug: Compare with batch prediction if sample selected
+                if st.session_state.input_mode == "Load from Dataset" and default_data is not None and st.session_state.selected_sample_index is not None:
+                    selected_index = st.session_state.selected_sample_index
+                    batch_df = default_data[feature_names].iloc[[selected_index]]
                     if scenario_key == "no_imp":
                         batch_processed = assets["scalers"]["no_imp"].transform(batch_df)
                     elif scenario_key == "median":
@@ -780,7 +819,7 @@ with tab_single_pred:
                         batch_imputed = assets["imputers"]["knn"].transform(batch_df)
                         batch_processed = assets["scalers"]["knn"].transform(batch_imputed)
                     batch_prediction = model.predict(batch_processed)[0]
-                    st.info(f"Debug: Single Prediction: {prediction:.2f}% | Batch Prediction (Sample {st.session_state.selected_sample_index + 1}): {batch_prediction:.2f}%")
+                    st.info(f"Debug: Single Prediction: {prediction:.2f}% | Batch Prediction (Sample {selected_index + 1}): {batch_prediction:.2f}%")
                 
                 category, color, description = get_swelling_category(prediction)
         
@@ -882,8 +921,9 @@ with tab_batch_existing:
     </div>
     """, unsafe_allow_html=True)
     
-    try:
-        default_data_with_output = pd.read_excel("data-with-output.xlsx")
+    default_data_with_output = load_default_data("data-with-output.xlsx")
+    
+    if default_data_with_output is not None:
         st.success("✅ Default validation dataset loaded successfully")
         
         st.markdown("## 📈 Dataset Overview")
@@ -898,10 +938,6 @@ with tab_batch_existing:
         with overview_col4:
             missing_pct = default_data_with_output[feature_names].isnull().sum().sum() / (len(default_data_with_output) * len(feature_names)) * 100
             st.metric("Missing Data", f"{missing_pct:.2f}%")
-            
-    except FileNotFoundError:
-        st.error("⚠️ Default data file 'data-with-output.xlsx' not found")
-        default_data_with_output = None
     
     if default_data_with_output is not None:
         template_df_existing = default_data_with_output.copy()
@@ -1089,8 +1125,9 @@ with tab_batch_unseen:
     </div>
     """, unsafe_allow_html=True)
     
-    try:
-        default_data_without_output = pd.read_excel("data-without-output.xlsx")
+    default_data_without_output = load_default_data("data-without-output.xlsx")
+    
+    if default_data_without_output is not None:
         st.success("✅ Default unseen dataset loaded successfully")
         
         st.markdown("## 📈 Dataset Overview")
@@ -1103,10 +1140,6 @@ with tab_batch_unseen:
             missing_pct = default_data_without_output[feature_names].isnull().sum().sum() / (len(default_data_without_output) * len(feature_names)) * 100
             st.metric("Missing Data", f"{missing_pct:.2f}%")
             
-    except FileNotFoundError:
-        st.error("⚠️ Default unseen data file 'data-without-output.xlsx' not found")
-        default_data_without_output = None
-
     if default_data_without_output is not None:
         template_df_unseen = default_data_without_output.copy()
         excel_template_unseen = to_excel(template_df_unseen)
@@ -1250,17 +1283,17 @@ with tab_batch_unseen:
 
 # --- Enhanced About Tab for Academic Paper Quality ---
 with tab_about:
-    st.markdown("# ℹ️ About the web app")
+    st.markdown("# ℹ️ About the Tool")
     
     st.markdown("""
     ### Introduction
-    This web app leverages advanced machine learning techniques to predict soil swelling potential, a critical factor in geotechnical engineering. It is designed for researchers, engineers, and students to perform rapid assessments with high accuracy.
+    This tool leverages advanced machine learning techniques to predict soil swelling potential, a critical factor in geotechnical engineering. It is designed for researchers, engineers, and students to perform rapid assessments with high accuracy.
     
     ### Methodology
     - **Models**: XGBoost, LightGBM, CatBoost with hyperparameter tuning via cross-validation.
     - **Preprocessing**: Handling missing values using native model capabilities, median, or KNN imputation; standardized scaling.
     - **Interpretability**: SHAP values for feature contribution analysis.
-    - **Dataset**: Compiled from comprehensive soil testing data (Onyekpe, 2021), consisting of 395 samples with 12 geotechnical features.
+    - **Dataset**: Compiled from multi-continental sources (Eyo & Onyekpe, 2021), consisting of 395 samples with 12 geotechnical features.
     
     **Key Metrics**:
     - R² for model fit.
@@ -1270,7 +1303,7 @@ with tab_about:
     ### Research Team
     - PhD Candidate Khaled Hamdaoui
     - PhD. Billal Sari Ahmed
-    - PhD. Mohamed Elhebib Guellil
+    - PhD Mohamed Elhebib Guellil
     - Prof. Mohamed Ghrici
     
     **Affiliation**: Geomaterials Laboratory, Civil Engineering Dept., Hassiba Benbouali University, Chlef, Algeria
@@ -1284,12 +1317,11 @@ with tab_about:
     - Visualization: Matplotlib.
     
     ### Acknowledgments
-    Based on dataset from Onyekpe (2021). Thanks to open-source contributors for libraries used.
+    Based on dataset from Eyo & Onyekpe (2021). Thanks to open-source contributors for libraries used.
     
     ### Citation
-    If using this web app in academic work, please cite:
-    
-    Onyekpe, U., 2021. Data on one-dimensional vertical free swelling potential of soils and related soil properties. Data in Brief, 39, p.107608.
+    If using this tool in academic work, please cite:
+    Hamdaoui, K., Sari Ahmed, B., Guellil, M.E., Ghrici, M. (2025). ": Leveraging Gradient Boosting Models for Robust Prediction on Incomplete Geotechnical Datasets"
     """)
 
 # Footer
@@ -1297,6 +1329,6 @@ st.markdown("---")
 st.markdown("""
 <div style="text-align: center; padding: 2rem; color: #7F8C8D;">
     <p>🏛️ Developed at Hassiba Benbouali University | 🔬 Geomaterials Laboratory</p>
-    <p>📧 Contact: k.hamdaoui92@univ-chlef.dz | 🌟 Version 2.3 - Academic Enhanced Edition</p>
+    <p>📧 Contact: k.hamdaoui92@univ-chlef.dz | 🌟 Version 2.4 - Default Sample 28 for Manual Input</p>
 </div>
 """, unsafe_allow_html=True)
